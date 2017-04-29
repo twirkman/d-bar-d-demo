@@ -3,6 +3,10 @@ import logo from './logo.png';
 import './App.css';
 import Rendering from './Rendering';
 
+const initialLength = 120;
+const initialWidth = 40;
+const initialHeight = 20;
+
 class App extends Component {
   render () {
     return (
@@ -17,7 +21,7 @@ class App extends Component {
             </p>
           </div>
         </div>
-        <Quote l="120" w="40" h="20"/>
+        <Quote l={initialLength} w={initialWidth} h={initialHeight}/>
       </div>
     );
   }
@@ -27,12 +31,15 @@ class Quote extends Component {
   constructor (props) {
     super(props);
 
+    const l = parseFloat(props.l);
+    const w = parseFloat(props.w);
+    const h = parseFloat(props.h);
 
     this.state = {
-      l: props.l,
-      w: props.w,
-      h: props.h,
-      quote: this.getQuote(props.l, props.w, props.h),
+      l,
+      w,
+      h,
+      quote: this.getQuote(l, w, h),
     };
 
     this.handleInputChange = this.handleInputChange.bind(this);
@@ -40,15 +47,18 @@ class Quote extends Component {
 
   handleInputChange (name, value) {
     this.setState(prev => {
+      let v = parseFloat(value);
+      v = isNaN(v) ? 0.0 : v;
+
       const s = {
         l: prev.l,
         w: prev.w,
         h: prev.h,
       };
-      s[name] = value;
+      s[name] = v;
 
       return {
-        [name]: value,
+        [name]: v,
         quote: this.getQuote(s.l, s.w, s.h),
       };
     })
@@ -59,6 +69,10 @@ class Quote extends Component {
   }
 
   render () {
+    const l = this.state.l;
+    const w = this.state.w;
+    const h = this.state.h;
+
     return (
       <div className="row">
         <div className="col-12">
@@ -68,9 +82,9 @@ class Quote extends Component {
         </div>
         <div className="col-md-4">
           <form>
-            <Dimension name="l" value={this.state.l} onChange={this.handleInputChange}/>
-            <Dimension name="w" value={this.state.w} onChange={this.handleInputChange}/>
-            <Dimension name="h" value={this.state.h} onChange={this.handleInputChange}/>
+            <Dimension name="l" value={l} onChange={this.handleInputChange}/>
+            <Dimension name="w" value={w} onChange={this.handleInputChange}/>
+            <Dimension name="h" value={h} onChange={this.handleInputChange}/>
             <div className="form-group row">
               <label className="col-sm-2 col-form-label">
                 <strong>Quote:</strong>
@@ -84,7 +98,7 @@ class Quote extends Component {
           </form>
         </div>
         <div className="col-md-8">
-          <Rendering />
+          <Rendering l={l} w={w} h={h}/>
         </div>
       </div>
     );
@@ -110,7 +124,7 @@ class Dimension extends Component {
 
   render() {
     const name = this.props.name;
-    const value = this.props.value;
+    const value = this.props.value || '';
     const id = `dimension-${name}`;
 
     return (

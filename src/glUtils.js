@@ -86,22 +86,6 @@ Vector.prototype.flatten = function ()
     return this.elements;
 };
 
-export function mht(m) {
-    var s = "";
-    if (m.length == 16) {
-        for (var i = 0; i < 4; i++) {
-            s += "<span style='font-family: monospace'>[" + m[i*4+0].toFixed(4) + "," + m[i*4+1].toFixed(4) + "," + m[i*4+2].toFixed(4) + "," + m[i*4+3].toFixed(4) + "]</span><br>";
-        }
-    } else if (m.length == 9) {
-        for (var i = 0; i < 3; i++) {
-            s += "<span style='font-family: monospace'>[" + m[i*3+0].toFixed(4) + "," + m[i*3+1].toFixed(4) + "," + m[i*3+2].toFixed(4) + "]</font><br>";
-        }
-    } else {
-        return m.toString();
-    }
-    return s;
-}
-
 //
 // gluLookAt
 //
@@ -180,3 +164,6 @@ export function makeFrustum(left, right,
                [0, 0, C, D],
                [0, 0, -1, 0]]);
 }
+
+export {Matrix as Matrix};
+export {Vector as Vector};
