@@ -6,13 +6,6 @@ const $M = global.$M;
 
 var gl;
 
-let groundVertsBuffer;
-let groundVertsColorBuffer;
-
-var cubeVerticesBuffer;
-var cubeVerticesColorBuffer;
-var cubeVerticesIndexBuffer;
-var cubeVerticesIndexBuffer;
 var cubeRotation = 0.0;
 var cubeXOffset = 0.0;
 var cubeYOffset = 0.0;
@@ -33,6 +26,7 @@ class Rendering extends Component {
     super(props);
 
     this.drawScene = this.drawScene.bind(this);
+    this.initStaticBuffers = this.initStaticBuffers.bind(this);
   }
 
   componentDidMount () {
@@ -53,20 +47,19 @@ class Rendering extends Component {
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
     initShaders();
-    initBuffers();
+    this.initStaticBuffers();
 
     setInterval(this.drawScene, 15);
   }
 
   drawScene () {
-    const roofPitch = 3.0 / 12.0;
     const l = this.props.l;
     const w = this.props.w;
     const h = this.props.h;
-    const roofHeight = (w / 2) * roofPitch;
+    const roofHeight = (w / 2) * this.props.pitch;
     const sweep = Math.max(l, w);
 
-    cubeVerticesBuffer = generateBuildingVerts(l, w, h);
+    this.buildingVertsBuffer = generateBuildingVerts(l, w, h, roofHeight);
 
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
@@ -93,24 +86,24 @@ class Rendering extends Component {
     mvRotate(cubeRotation, [0, 1, 0]);
 
     // Draw the ground 
-    gl.bindBuffer(gl.ARRAY_BUFFER, groundVertsBuffer);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.groundVertsBuffer);
     gl.vertexAttribPointer(vertexPositionAttribute, 3, gl.FLOAT, false, 0, 0);
 
-    gl.bindBuffer(gl.ARRAY_BUFFER, groundVertsColorBuffer);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.groundVertsColorBuffer);
     gl.vertexAttribPointer(vertexColorAttribute, 4, gl.FLOAT, false, 0, 0);
 
     setMatrixUniforms();
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
     // Draw the building 
-    gl.bindBuffer(gl.ARRAY_BUFFER, cubeVerticesBuffer);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.buildingVertsBuffer);
     gl.vertexAttribPointer(vertexPositionAttribute, 3, gl.FLOAT, false, 0, 0);
 
-    gl.bindBuffer(gl.ARRAY_BUFFER, cubeVerticesColorBuffer);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.buildingVertsColorBuffer);
     gl.vertexAttribPointer(vertexColorAttribute, 4, gl.FLOAT, false, 0, 0);
 
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, cubeVerticesIndexBuffer);
-    gl.drawElements(gl.TRIANGLES, 36, gl.UNSIGNED_SHORT, 0);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.buildingVertsIndexBuffer);
+    gl.drawElements(gl.TRIANGLES, 48, gl.UNSIGNED_SHORT, 0);
 
     // Restore the original matrix
 
@@ -137,6 +130,87 @@ class Rendering extends Component {
     lastCubeUpdateTime = currentTime;
   }
 
+  initStaticBuffers () {
+    // Ground
+
+    const groundVerts = [
+      1000.0, -0.01, -1000.0,
+      -1000.0, -0.01, -1000.0,
+      1000.0, -0.01,  1000.0,
+      -1000.0, -0.01,  1000.0,
+    ];
+
+    this.groundVertsBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.groundVertsBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(groundVerts), gl.STATIC_DRAW);
+
+    // Ground colors
+
+    const groundVertColors = [
+      0.0, 0.384, 0.145, 1.0,
+      0.0, 0.384, 0.145, 1.0,
+      0.0, 0.384, 0.145, 1.0,
+      0.0, 0.384, 0.145, 1.0,
+    ];
+
+    this.groundVertsColorBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.groundVertsColorBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(groundVertColors), gl.STATIC_DRAW);
+
+    // Building colors
+
+    const faceColors = [
+      [0.8,  0.8,  0.8,  1.0],    // Front face
+      [0.8,  0.8,  0.8,  1.0],    // Back face
+      [0.7,  0.7,  0.7,  1.0],    // Right face
+      [0.7,  0.7,  0.7,  1.0],    // Left face
+      [0.2,  0.2,  0.2,  1.0],    // Bottom face
+      [0.9,  0.9,  0.9,  1.0],    // Roof right face
+      [0.94, 0.94, 0.94, 1.0],    // Roof left face
+    ];
+
+    // Convert face colors into a color for each vertex.
+    let buildingVertColors = [];
+
+    faceColors.forEach((color) => {
+      // Repeat each color four times for the four vertices of the face
+      for (let i = 0; i < 4; i++) {
+        buildingVertColors = buildingVertColors.concat(color);
+      }
+    });
+
+    // Repeat the front and back colors for the 3 vertices of the roof front and back.
+    for (let i = 0; i < 2; i++) {
+      for (let j = 0; j < 3; j++) {
+        buildingVertColors = buildingVertColors.concat(faceColors[i]);
+      }
+    }
+
+    this.buildingVertsColorBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.buildingVertsColorBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(buildingVertColors), gl.STATIC_DRAW);
+
+    // Building vertex indices
+    
+    // Each rect rendered as 2 triangles, plus 2 more for the roof sides
+    const buildingVertIndices = [
+      0,  1,  2,      0,  2,  3,    // front
+      4,  5,  6,      4,  6,  7,    // back
+      8,  9,  10,     8,  10, 11,   // right
+      12, 13, 14,     12, 14, 15,   // left
+      16, 17, 18,     16, 18, 19,   // bottom
+      20, 21, 22,     20, 22, 23,   // roof right
+      24, 25, 26,     24, 26, 27,   // roof left
+      28, 29, 30,                   // roof front
+      31, 32, 33,                   // roof back
+    ];
+
+    // Element Array Buffer maps into building vertices buffer
+    this.buildingVertsIndexBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.buildingVertsIndexBuffer);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(buildingVertIndices), gl.STATIC_DRAW);
+  }
+
   render() {
     return (
       <canvas ref="canvas" width={720} height={480}/>
@@ -144,47 +218,64 @@ class Rendering extends Component {
   }
 }
 
-function generateBuildingVerts (l, w, h) {
+function generateBuildingVerts (l, w, h, roofHeight) {
   const x = w / 2.0;
   const y = h;
   const z = l / 2.0;
+  const r = h + roofHeight;
 
   const verts = [
     // Front face
-    -x, 0,  z,
-     x, 0,  z,
-     x, y,  z,
-    -x, y,  z,
+    -x,  0,  z,
+     x,  0,  z,
+     x,  y,  z,
+    -x,  y,  z,
 
     // Back face
-    -x, 0, -z,
-    -x, h, -z,
-     x, h, -z,
-     x, 0, -z,
-
-    // Top face
-    -x, h, -z,
-    -x, h,  z,
-     x, h,  z,
-     x, h, -z,
-
-    // Bottom face
-    -x, 0, -z,
-     x, 0, -z,
-     x, 0,  z,
-    -x, 0,  z,
+    -x,  0, -z,
+    -x,  y, -z,
+     x,  y, -z,
+     x,  0, -z,
 
     // Right face
-     x, 0, -z,
-     x, h, -z,
-     x, h,  z,
-     x, 0,  z,
+     x,  0, -z,
+     x,  y, -z,
+     x,  y,  z,
+     x,  0,  z,
 
     // Left face
-    -x, 0, -z,
-    -x, 0,  z,
-    -x, h,  z,
-    -x, h, -z
+    -x,  0, -z,
+    -x,  0,  z,
+    -x,  y,  z,
+    -x,  y, -z,
+
+    // Bottom face
+    -x,  0, -z,
+     x,  0, -z,
+     x,  0,  z,
+    -x,  0,  z,
+
+    // Roof right face
+     x,  y, -z,
+     0,  r, -z,
+     0,  r,  z,
+     x,  y,  z,
+
+    // Roof left face
+    -x,  y,  z,
+     0,  r,  z,
+     0,  r, -z,
+    -x,  y, -z,
+
+    // Roof front face
+    -x,  y,  z,
+     x,  y,  z,
+     0,  r,  z,
+
+    // Roof back face
+     x,  y, -z,
+    -x,  y, -z,
+     0,  r, -z,
   ];
 
   const buffer = gl.createBuffer();
@@ -194,92 +285,9 @@ function generateBuildingVerts (l, w, h) {
   return buffer;
 }
 
-/**
- * Create vertex and color buffers
- */
-function initBuffers() {
-  
-  /////////////////////////////////////////////////////////////////////////////
-  // Ground 
-  /////////////////////////////////////////////////////////////////////////////
-
-  const groundVerts = [
-     1000.0, -0.01, -1000.0,
-    -1000.0, -0.01, -1000.0,
-     1000.0, -0.01,  1000.0,
-    -1000.0, -0.01,  1000.0,
-  ];
-
-  const groundVertColors = [
-    0.0, 0.384, 0.145, 1.0,
-    0.0, 0.384, 0.145, 1.0,
-    0.0, 0.384, 0.145, 1.0,
-    0.0, 0.384, 0.145, 1.0,
-  ];
-
-  groundVertsBuffer = gl.createBuffer();
-  gl.bindBuffer(gl.ARRAY_BUFFER, groundVertsBuffer);
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(groundVerts), gl.STATIC_DRAW);
-
-  groundVertsColorBuffer = gl.createBuffer();
-  gl.bindBuffer(gl.ARRAY_BUFFER, groundVertsColorBuffer);
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(groundVertColors), gl.STATIC_DRAW);
-
-  /////////////////////////////////////////////////////////////////////////////
-  // Building
-  /////////////////////////////////////////////////////////////////////////////
-
-  var colors = [
-    [0.8,  0.8,  0.8,  1.0],    // Front face
-    [0.8,  0.8,  0.8,  1.0],    // Back face
-    [0.9,  0.9,  0.9,  1.0],    // Top face
-    [0.2,  0.2,  0.2,  1.0],    // Bottom face
-    [0.7,  0.7,  0.7,  1.0],    // Right face
-    [0.7,  0.7,  0.7,  1.0],    // Left face
-  ];
-
-  // Convert the array of colors into a table for all the vertices.
-
-  let generatedColors = [];
-
-  for (var j=0; j<6; j++) {
-    var c = colors[j];
-
-    // Repeat each color four times for the four vertices of the face
-
-    for (var i=0; i<4; i++) {
-      generatedColors = generatedColors.concat(c);
-    }
-  }
-
-  cubeVerticesColorBuffer = gl.createBuffer();
-  gl.bindBuffer(gl.ARRAY_BUFFER, cubeVerticesColorBuffer);
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(generatedColors), gl.STATIC_DRAW);
-
-  // This array defines each face as two triangles, using the
-  // indices into the vertex array to specify each triangle's position.
-  const cubeVertexIndices = [
-    0,  1,  2,      0,  2,  3,    // front
-    4,  5,  6,      4,  6,  7,    // back
-    8,  9,  10,     8,  10, 11,   // top
-    12, 13, 14,     12, 14, 15,   // bottom
-    16, 17, 18,     16, 18, 19,   // right
-    20, 21, 22,     20, 22, 23    // left
-  ];
-
-  // Build the element array buffer; this specifies the indices
-  // into the vertex array for each face's vertices.
-  cubeVerticesIndexBuffer = gl.createBuffer();
-  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, cubeVerticesIndexBuffer);
-  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(cubeVertexIndices), gl.STATIC_DRAW);
-}
-
-
-
-
-/**
- * Initialize the shaders, so WebGL knows how to light our scene.
- */
+//
+// Initialize the shaders, so WebGL knows how to light our scene.
+//
 function initShaders() {
   var fragmentShader = getShader(gl, "shader-fs");
   var vertexShader = getShader(gl, "shader-vs");
@@ -306,10 +314,10 @@ function initShaders() {
   gl.enableVertexAttribArray(vertexColorAttribute);
 }
 
-/**
- * Loads a shader program by scouring the current document,
- * looking for a script with the specified ID.
- */
+//
+// Loads a shader program by scouring the current document,
+// looking for a script with the specified ID.
+//
 function getShader(gl, id) {
   var shaderScript = document.getElementById(id);
 

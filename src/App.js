@@ -6,6 +6,7 @@ import Rendering from './Rendering';
 const initialLength = 120;
 const initialWidth = 40;
 const initialHeight = 20;
+const roofPitch = 3.0 / 12.0;
 
 class App extends Component {
   render () {
@@ -98,7 +99,7 @@ class Quote extends Component {
           </form>
         </div>
         <div className="col-md-8">
-          <Rendering l={l} w={w} h={h}/>
+          <Rendering l={l} w={w} h={h} pitch={roofPitch}/>
         </div>
       </div>
     );
