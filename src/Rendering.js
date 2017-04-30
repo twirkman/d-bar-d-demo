@@ -6,10 +6,16 @@ class Rendering extends Component {
     super(props);
 
     this.rotation = 0.0;
+    this.rotationSpeed = 45;
+    this.rotating = true;
     this.mvMatrixStack = [];
 
     this.drawScene = this.drawScene.bind(this);
-    this.initStaticBuffers = this.initStaticBuffers.bind(this);
+    this.handleClick = this.handleClick.bind(this);
+  }
+
+  handleClick () {
+    this.rotating = !this.rotating;
   }
 
   componentDidMount () {
@@ -139,8 +145,10 @@ class Rendering extends Component {
     // Update the rotation for the next draw
     const currentTime = (new Date()).getTime();
     const delta = currentTime - (this.lastUpdateTime || currentTime);
-    this.rotation += (30 * delta) / 1000.0;
     this.lastUpdateTime = currentTime;
+    if (this.rotating) {
+      this.rotation += (this.rotationSpeed * delta) / 1000.0;
+    }
   }
 
   drawDoor (gl, door) {
@@ -307,7 +315,7 @@ class Rendering extends Component {
 
   render() {
     return (
-      <canvas ref="canvas" width={720} height={480}/>
+      <canvas ref="canvas" width={720} height={480} onClick={this.handleClick}/>
     );
   }
 }

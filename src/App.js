@@ -67,7 +67,7 @@ const stateMap = {
   },
   doorType: {
     label: 'Type',
-    default: doorTypes.OVERHEAD,
+    default: doorTypes.SLIDING,
     options: [
       'Sliding',
       'Overhead',
@@ -161,7 +161,7 @@ class App extends Component {
   render () {
     return (
       <div className="container">
-        <div className="row py-2 bg-faded">
+        <div className="row pt-2 mb-3 bg-faded">
           <div className="col">
             <img src={logo}  alt="D Bar D" height="50" />
           </div>
@@ -316,11 +316,6 @@ class Quote extends Component {
 
     return (
       <div className="row">
-        <div className="col-12">
-          <h3 className="text-center my-4">
-            Customize your building for a real-time quote.
-          </h3>
-        </div>
         <div className="col-md-4">
           <form>
             <fieldset>
@@ -343,21 +338,14 @@ class Quote extends Component {
               onRemove={this.handleRemoveDoor}
               onCancel={this.handleCancelDoor}
               onChange={this.handleInputChange}/>
-            
-            <div className="form-group row">
-              <label className="col-sm-5 col-form-label">
-                <strong>Quote:</strong>
-              </label>
-              <div className="col-sm-7">
-                <p className="form-control-static">
-                  <strong>${quote}.00</strong>
-                </p>
-              </div>
-            </div>
           </form>
         </div>
         <div className="col-md-8">
           <Rendering length={length} width={width} height={height} pitch={pitchValue} doors={doorsRendered}/>
+          <div className="mt-3 text-center">
+            <span className="lead mr-3 pt-4">Your real-time custom quote: <strong>${quote}.00</strong></span>
+            <button type="button" className="btn btn-primary">Submit for review</button>
+          </div>
         </div>
       </div>
     );
@@ -436,7 +424,7 @@ class DoorBuilder extends Component {
         <div className="form-group row">
           <div className="col-12 text-right">
             {editing && <button type="button" className="btn btn-secondary mr-2" onClick={this.handleCancel}>Cancel</button>}
-            <button type="button" className="btn btn-primary" onClick={this.handleAdd}>{addMessage}</button>
+            <button type="button" className="btn btn-outline-primary" onClick={this.handleAdd}>{addMessage}</button>
           </div>
         </div>
       </fieldset>
