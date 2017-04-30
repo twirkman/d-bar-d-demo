@@ -1,9 +1,12 @@
+// included from https://developer.mozilla.org/en-US/docs/Web/API/WebGL_API/Tutorial/Getting_started_with_WebGL
+
 import {Vector, Matrix} from 'sylvester';
 
-// augment Sylvester some
+// Sylvester sets some globals
 const $V = global.$V;
 const $M = global.$M;
 
+// Augment sylvester
 Matrix.Translation = function (v)
 {
   if (v.elements.length == 2) {

@@ -1,29 +1,12 @@
-import {Vector, Matrix, makeLookAt, makeOrtho, makePerspective, makeFrustum} from './glUtils';
+import {Vector, Matrix, makeLookAt, makePerspective} from './glUtils';
 import React, { Component } from 'react';
-
-const $V = global.$V;
-const $M = global.$M;
-
-var gl;
-
-var cubeRotation = 0.0;
-var cubeXOffset = 0.0;
-var cubeYOffset = 0.0;
-var cubeZOffset = 0.0;
-var lastCubeUpdateTime = 0;
-var xIncValue = 0.2;
-var yIncValue = -0.4;
-var zIncValue = 0.3;
-
-var mvMatrix;
-var shaderProgram;
-var vertexPositionAttribute;
-var vertexColorAttribute;
-var perspectiveMatrix;
 
 class Rendering extends Component {
   constructor (props) {
     super(props);
+
+    this.rotation = 0.0;
+    this.mvMatrixStack = [];
 
     this.drawScene = this.drawScene.bind(this);
     this.initStaticBuffers = this.initStaticBuffers.bind(this);
@@ -34,100 +17,161 @@ class Rendering extends Component {
   }
 
   initCanvas () {
-    gl = this.refs.canvas.getContext('webgl') 
-      || this.refs.canvas.getContext('experimental-webgl');
+    const canvas = this.refs.canvas;
+    this.gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
 
-    if (!gl) {
-      alert('Unable to initialize WebGL. Your browser may not support it.');
+    if (!this.gl) {
+      alert('Unable to initialize WebGL. Your browser may not support it. Try Chrome or Firefox.');
     }
 
-    gl.clearColor(0.568, 0.694, 0.855, 1.0);
-    gl.enable(gl.DEPTH_TEST);
-    gl.depthFunc(gl.LEQUAL);
-    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    this.gl.clearColor(0.568, 0.694, 0.855, 1.0);
+    this.gl.enable(this.gl.DEPTH_TEST);
+    this.gl.depthFunc(this.gl.LEQUAL);
+    this.gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
 
-    initShaders();
+    this.initShaders();
     this.initStaticBuffers();
+
+    // Establish the camera frustum: FOV, AR, near plane, far plane
+    this.perspectiveMatrix = makePerspective(45, 640.0/480.0, 0.1, 1000.0);
 
     setInterval(this.drawScene, 15);
   }
 
   drawScene () {
-    const l = this.props.l;
-    const w = this.props.w;
-    const h = this.props.h;
-    const roofHeight = (w / 2) * this.props.pitch;
-    const sweep = Math.max(l, w);
+    const length = this.props.length;
+    const width = this.props.width;
+    const height = this.props.height;
+    const roofHeight = (width / 2) * this.props.pitch;
+    const isBuilding = length && width && height;
+    const doors = this.props.doors;
+    const rotationAxis = [0, 1, 0];
 
-    this.buildingVertsBuffer = generateBuildingVerts(l, w, h, roofHeight);
-
-    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-
-    // Establish the camera frustum: FOV, AR, near plane, far plane
-    perspectiveMatrix = makePerspective(45, 640.0/480.0, 0.1, 1000.0);
+    this.gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
 
     // Set the drawing position to the center of the scene.
-    loadIdentity();
+    this.mvMatrix = loadIdentity();
 
     // Position the camera.
-    const ey = Math.max(h + roofHeight - 1.0, 5.0);
-    const ez = Math.sqrt(l * l + w * w) * 1.1;
-    const cy = (h + roofHeight) / 2.0;
-
+    let ey = 1;
+    let ez = 1;
+    let cy = 1;
+    if (isBuilding) {
+      ey = Math.max(height, 1.0);
+      ez = Math.max(Math.sqrt(length * length + width * width), (height + roofHeight) * 2) * 1.2;
+      cy = Math.max((height + roofHeight) / 2.0, 1.0);
+    }
     const camera = makeLookAt(
       0.0, ey, ez,
       0.0, cy, 0.0,
       0.0, 1.0, 0.0,
     );
-    multMatrix(camera);
+    this.mvMatrix = multMatrix(this.mvMatrix, camera);
 
     // Save the current matrix, then rotate before we draw.
-    mvPushMatrix();
-    mvRotate(cubeRotation, [0, 1, 0]);
+    this.mvPushMatrix();
+    this.mvMatrix = rotateMatrix(this.mvMatrix, this.rotation, rotationAxis);
 
     // Draw the ground 
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.groundVertsBuffer);
-    gl.vertexAttribPointer(vertexPositionAttribute, 3, gl.FLOAT, false, 0, 0);
+    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.groundVertsBuffer);
+    this.gl.vertexAttribPointer(this.vertexPositionAttribute, 3, this.gl.FLOAT, false, 0, 0);
 
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.groundVertsColorBuffer);
-    gl.vertexAttribPointer(vertexColorAttribute, 4, gl.FLOAT, false, 0, 0);
+    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.groundVertsColorBuffer);
+    this.gl.vertexAttribPointer(this.vertexColorAttribute, 4, this.gl.FLOAT, false, 0, 0);
 
-    setMatrixUniforms();
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    this.setMatrixUniforms();
+    this.gl.drawArrays(this.gl.TRIANGLE_STRIP, 0, 4);
 
-    // Draw the building 
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.buildingVertsBuffer);
-    gl.vertexAttribPointer(vertexPositionAttribute, 3, gl.FLOAT, false, 0, 0);
+    // Draw the building
+    if (isBuilding) {
+      this.buildingVertsBuffer = generateBuildingVerts(this.gl, length, width, height, roofHeight);
 
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.buildingVertsColorBuffer);
-    gl.vertexAttribPointer(vertexColorAttribute, 4, gl.FLOAT, false, 0, 0);
+      this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.buildingVertsBuffer);
+      this.gl.vertexAttribPointer(this.vertexPositionAttribute, 3, this.gl.FLOAT, false, 0, 0);
 
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.buildingVertsIndexBuffer);
-    gl.drawElements(gl.TRIANGLES, 48, gl.UNSIGNED_SHORT, 0);
+      this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.buildingVertsColorBuffer);
+      this.gl.vertexAttribPointer(this.vertexColorAttribute, 4, this.gl.FLOAT, false, 0, 0);
 
-    // Restore the original matrix
+      this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.buildingVertsIndexBuffer);
 
-    mvPopMatrix();
+      this.setMatrixUniforms();
+      this.gl.drawElements(this.gl.TRIANGLES, 48, this.gl.UNSIGNED_SHORT, 0);
 
-    // Update the rotation for the next draw, if it's time to do so.
+      const doorOffset = 0.03;
 
-    var currentTime = (new Date).getTime();
-    if (lastCubeUpdateTime) {
-      var delta = currentTime - lastCubeUpdateTime;
+      doors.forEach((door) => {
+        this.mvPushMatrix();
 
-      cubeRotation += (30 * delta) / 1000.0;
-      cubeXOffset += xIncValue * ((30 * delta) / 1000.0);
-      cubeYOffset += yIncValue * ((30 * delta) / 1000.0);
-      cubeZOffset += zIncValue * ((30 * delta) / 1000.0);
+        let rot;
+        let trans;
+        switch (parseInt(door.wall)) {
+          case 0:
+            rot = 0;
+            trans = [0, 0, (length / 2.0) + doorOffset];
+            break;
+          case 1:
+            rot = 180;
+            trans = [0, 0, (length / 2.0) + doorOffset];
+            break;
+          case 2:
+            rot = 90;
+            trans = [0, 0, (width / 2.0) + doorOffset];
+            break;
+          case 3:
+            rot = 270;
+            trans = [0, 0, (width / 2.0) + doorOffset];
+            break;
+        }
 
-      if (Math.abs(cubeYOffset) > 2.5) {
-        xIncValue = -xIncValue;
-        yIncValue = -yIncValue;
-        zIncValue = -zIncValue;
-      }
+        this.mvMatrix = rotateMatrix(this.mvMatrix, rot, rotationAxis);
+        this.mvMatrix = translateMatrix(this.mvMatrix, trans);
+
+        this.setMatrixUniforms();
+        this.drawDoor(this.gl, door);
+
+        this.mvPopMatrix();
+      });
     }
 
-    lastCubeUpdateTime = currentTime;
+    // Restore the original matrix
+    this.mvPopMatrix();
+
+    // Update the rotation for the next draw
+    const currentTime = (new Date()).getTime();
+    const delta = currentTime - (this.lastUpdateTime || currentTime);
+    this.rotation += (30 * delta) / 1000.0;
+    this.lastUpdateTime = currentTime;
+  }
+
+  drawDoor (gl, door) {
+    const x = door.width / 2.0;
+    const y = door.height;
+
+    const verts = [
+       x, y, 0,
+      -x, y, 0,
+       x, 0, 0,
+      -x, 0, 0,
+    ];
+
+    const buffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(verts), gl.STATIC_DRAW);
+    gl.vertexAttribPointer(this.vertexPositionAttribute, 3, gl.FLOAT, false, 0, 0);
+
+    const vertColors = [
+      1.0, 1.0, 1.0, 1.0,
+      1.0, 1.0, 1.0, 1.0,
+      1.0, 1.0, 1.0, 1.0,
+      1.0, 1.0, 1.0, 1.0,
+    ];
+
+    const colorBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertColors), gl.STATIC_DRAW);
+    gl.vertexAttribPointer(this.vertexColorAttribute, 4, gl.FLOAT, false, 0, 0);
+    
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   }
 
   initStaticBuffers () {
@@ -140,9 +184,9 @@ class Rendering extends Component {
       -1000.0, -0.01,  1000.0,
     ];
 
-    this.groundVertsBuffer = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.groundVertsBuffer);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(groundVerts), gl.STATIC_DRAW);
+    this.groundVertsBuffer = this.gl.createBuffer();
+    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.groundVertsBuffer);
+    this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array(groundVerts), this.gl.STATIC_DRAW);
 
     // Ground colors
 
@@ -153,9 +197,9 @@ class Rendering extends Component {
       0.0, 0.384, 0.145, 1.0,
     ];
 
-    this.groundVertsColorBuffer = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.groundVertsColorBuffer);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(groundVertColors), gl.STATIC_DRAW);
+    this.groundVertsColorBuffer = this.gl.createBuffer();
+    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.groundVertsColorBuffer);
+    this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array(groundVertColors), this.gl.STATIC_DRAW);
 
     // Building colors
 
@@ -186,9 +230,9 @@ class Rendering extends Component {
       }
     }
 
-    this.buildingVertsColorBuffer = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.buildingVertsColorBuffer);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(buildingVertColors), gl.STATIC_DRAW);
+    this.buildingVertsColorBuffer = this.gl.createBuffer();
+    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.buildingVertsColorBuffer);
+    this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array(buildingVertColors), this.gl.STATIC_DRAW);
 
     // Building vertex indices
     
@@ -206,9 +250,59 @@ class Rendering extends Component {
     ];
 
     // Element Array Buffer maps into building vertices buffer
-    this.buildingVertsIndexBuffer = gl.createBuffer();
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.buildingVertsIndexBuffer);
-    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(buildingVertIndices), gl.STATIC_DRAW);
+    this.buildingVertsIndexBuffer = this.gl.createBuffer();
+    this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.buildingVertsIndexBuffer);
+    this.gl.bufferData(this.gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(buildingVertIndices), this.gl.STATIC_DRAW);
+  }
+
+  setMatrixUniforms () {
+    const pUniform = this.gl.getUniformLocation(this.shaderProgram, "uPMatrix");
+    this.gl.uniformMatrix4fv(pUniform, false, new Float32Array(this.perspectiveMatrix.flatten()));
+
+    const mvUniform = this.gl.getUniformLocation(this.shaderProgram, "uMVMatrix");
+    this.gl.uniformMatrix4fv(mvUniform, false, new Float32Array(this.mvMatrix.flatten()));
+  }
+
+  initShaders () {
+    const fragmentShader = getShader(this.gl, "shader-fs");
+    const vertexShader = getShader(this.gl, "shader-vs");
+
+    // Create the shader program
+    this.shaderProgram = this.gl.createProgram();
+    this.gl.attachShader(this.shaderProgram, vertexShader);
+    this.gl.attachShader(this.shaderProgram, fragmentShader);
+    this.gl.linkProgram(this.shaderProgram);
+
+    // If creating the shader program failed, alert
+    if (!this.gl.getProgramParameter(this.shaderProgram, this.gl.LINK_STATUS)) {
+      alert("Unable to initialize the shader program: " + this.gl.getProgramInfoLog(this.shaderProgram));
+    }
+
+    this.gl.useProgram(this.shaderProgram);
+
+    this.vertexPositionAttribute = this.gl.getAttribLocation(this.shaderProgram, "aVertexPosition");
+    this.gl.enableVertexAttribArray(this.vertexPositionAttribute);
+
+    this.vertexColorAttribute = this.gl.getAttribLocation(this.shaderProgram, "aVertexColor");
+    this.gl.enableVertexAttribArray(this.vertexColorAttribute);
+  }
+
+  mvPushMatrix (m) {
+    if (m) {
+      this.mvMatrixStack.push(m.dup());
+      this.mvMatrix = m.dup();
+    } else {
+      this.mvMatrixStack.push(this.mvMatrix.dup());
+    }
+  }
+
+  mvPopMatrix () {
+    if (!this.mvMatrixStack.length) {
+      throw(new Error(`Can't pop from an empty matrix stack.`));
+    }
+
+    this.mvMatrix = this.mvMatrixStack.pop();
+    return this.mvMatrix;
   }
 
   render() {
@@ -218,11 +312,11 @@ class Rendering extends Component {
   }
 }
 
-function generateBuildingVerts (l, w, h, roofHeight) {
-  const x = w / 2.0;
-  const y = h;
-  const z = l / 2.0;
-  const r = h + roofHeight;
+function generateBuildingVerts (gl, length, width, height, roofHeight) {
+  const x = width / 2.0;
+  const y = height;
+  const z = length / 2.0;
+  const r = height + roofHeight;
 
   const verts = [
     // Front face
@@ -286,35 +380,6 @@ function generateBuildingVerts (l, w, h, roofHeight) {
 }
 
 //
-// Initialize the shaders, so WebGL knows how to light our scene.
-//
-function initShaders() {
-  var fragmentShader = getShader(gl, "shader-fs");
-  var vertexShader = getShader(gl, "shader-vs");
-
-  // Create the shader program
-
-  shaderProgram = gl.createProgram();
-  gl.attachShader(shaderProgram, vertexShader);
-  gl.attachShader(shaderProgram, fragmentShader);
-  gl.linkProgram(shaderProgram);
-
-  // If creating the shader program failed, alert
-
-  if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
-    alert("Unable to initialize the shader program: " + gl.getProgramInfoLog(shaderProgram));
-  }
-
-  gl.useProgram(shaderProgram);
-
-  vertexPositionAttribute = gl.getAttribLocation(shaderProgram, "aVertexPosition");
-  gl.enableVertexAttribArray(vertexPositionAttribute);
-
-  vertexColorAttribute = gl.getAttribLocation(shaderProgram, "aVertexColor");
-  gl.enableVertexAttribArray(vertexColorAttribute);
-}
-
-//
 // Loads a shader program by scouring the current document,
 // looking for a script with the specified ID.
 //
@@ -334,7 +399,7 @@ function getShader(gl, id) {
   var currentChild = shaderScript.firstChild;
 
   while(currentChild) {
-    if (currentChild.nodeType == 3) {
+    if (currentChild.nodeType === 3) {
       theSource += currentChild.textContent;
     }
 
@@ -346,9 +411,9 @@ function getShader(gl, id) {
 
   var shader;
 
-  if (shaderScript.type == "x-shader/x-fragment") {
+  if (shaderScript.type === "x-shader/x-fragment") {
     shader = gl.createShader(gl.FRAGMENT_SHADER);
-  } else if (shaderScript.type == "x-shader/x-vertex") {
+  } else if (shaderScript.type === "x-shader/x-vertex") {
     shader = gl.createShader(gl.VERTEX_SHADER);
   } else {
     return null;  // Unknown shader type
@@ -377,50 +442,22 @@ function getShader(gl, id) {
 //
 
 function loadIdentity() {
-  mvMatrix = Matrix.I(4);
+  return Matrix.I(4);
 }
 
-function multMatrix(m) {
-  mvMatrix = mvMatrix.x(m);
+function multMatrix(m, n) {
+  return m.x(n);
 }
 
-function mvTranslate(v) {
-  multMatrix(Matrix.Translation($V([v[0], v[1], v[2]])).ensure4x4());
+function translateMatrix(m, v) {
+  return multMatrix(m, Matrix.Translation(Vector.create([v[0], v[1], v[2]])).ensure4x4());
 }
 
-function setMatrixUniforms() {
-  var pUniform = gl.getUniformLocation(shaderProgram, "uPMatrix");
-  gl.uniformMatrix4fv(pUniform, false, new Float32Array(perspectiveMatrix.flatten()));
+function rotateMatrix(m, angle, v) {
+  const inRadians = angle * Math.PI / 180.0;
 
-  var mvUniform = gl.getUniformLocation(shaderProgram, "uMVMatrix");
-  gl.uniformMatrix4fv(mvUniform, false, new Float32Array(mvMatrix.flatten()));
-}
-
-var mvMatrixStack = [];
-
-function mvPushMatrix(m) {
-  if (m) {
-    mvMatrixStack.push(m.dup());
-    mvMatrix = m.dup();
-  } else {
-    mvMatrixStack.push(mvMatrix.dup());
-  }
-}
-
-function mvPopMatrix() {
-  if (!mvMatrixStack.length) {
-    throw("Can't pop from an empty matrix stack.");
-  }
-
-  mvMatrix = mvMatrixStack.pop();
-  return mvMatrix;
-}
-
-function mvRotate(angle, v) {
-  var inRadians = angle * Math.PI / 180.0;
-
-  var m = Matrix.Rotation(inRadians, $V([v[0], v[1], v[2]])).ensure4x4();
-  multMatrix(m);
+  const n = Matrix.Rotation(inRadians, Vector.create([v[0], v[1], v[2]])).ensure4x4();
+  return multMatrix(m, n);
 }
 
 export default Rendering;
