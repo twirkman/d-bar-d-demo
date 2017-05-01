@@ -187,7 +187,7 @@ const stateMap = {
   },
   doorType: {
     label: 'Type',
-    default: doorTypes.SLIDING,
+    default: doorTypes.OVERHEAD,
     options: [
       'Sliding',
       'Overhead',
@@ -229,13 +229,13 @@ const stateMap = {
       {
         sizes: {
           options: [
-            '3 x 8',
+            '3 x 7',
             '4 x 8',
           ],
           values: [
             {
               width: 3,
-              height: 8,
+              height: 7,
             },
             {
               width: 4,
@@ -312,6 +312,8 @@ class Quote extends Component {
         return result;
       }, {});
 
+    this.doorCount = 0;
+
     this.handleInputChange = this.handleInputChange.bind(this);
     this.handleAddDoor = this.handleAddDoor.bind(this);
     this.handleRemoveDoor = this.handleRemoveDoor.bind(this);
@@ -333,14 +335,11 @@ class Quote extends Component {
     }
 
     this.setState((state, props) => {
-      const map = props.stateMap;
-      state[name] = value;
-      const sizes = map.doorType.values[state.doorType].sizes;
-      if (sizes && state.doorSize >= sizes.values.length) {
+      if (name === 'doorType') {
         return {
           [name]: value,
-          doorSize: sizes.values.length - 1,
-        };
+          doorSize: doorSizes.SMALL,
+        }
       } else {
         return {
           [name]: value,
@@ -351,10 +350,13 @@ class Quote extends Component {
 
   handleAddDoor () {
     this.setState(state => {
+      const doors = state.doors.map(door => Object.assign({}, door));
+
       if (state.editingDoor) {
-        state.doors.push(this.createDoor(state));
+        this.doorCount += 1;
+        doors.push(this.createDoor(state));
         return {
-          doors: state.doors,
+          doors,
           editingDoor: false,
         };
       } else {
@@ -365,8 +367,16 @@ class Quote extends Component {
     });
   }
 
-  handleRemoveDoor () {
-    // TODO
+  handleRemoveDoor (event) {
+    const id = parseInt(event.target.id);
+
+    this.setState(state => {
+      const doors = state.doors
+        .filter(door => door.key !== id)
+        .map(door => Object.assign({}, door));
+
+      return {doors};
+    });
   }
 
   handleCancelDoor () {
@@ -401,6 +411,7 @@ class Quote extends Component {
     }
 
     return {
+      key: this.doorCount,
       type: state.doorType,
       wall: state.doorWall,
       size: state.doorSize,
@@ -528,35 +539,36 @@ class Quote extends Component {
           volume: footingVolume,
         },
       ],
-      Doors: doors.slice().map(door => {
+      Doors: doors.filter(door => door.valid)
+        .map(door => Object.assign({}, door))
+        .map(door => {
+          const id = map.doorType.options[door.type];
 
-        const id = map.doorType.options[door.type];
+          door.qty = 1;
+          door.cat = 'door';
+          door.name = `${id} door`;
 
-        door.qty = 1;
-        door.cat = 'door';
-        door.name = `${id} door`;
-
-        switch (parseInt(door.type)) {
-          case doorTypes.SLIDING:
-            door.id = id;
-            door.area = door.width * door.height;
-            break;
-          case doorTypes.OVERHEAD:
-          case doorTypes.WALK_IN:
-            door.id = `${id}-${door.width}x${door.height}`;
-            break;
-          default:
-            throw new Error(`Unknown door type - ${parseInt(door.type)}`);
-        }
-        
-        return door;
+          switch (parseInt(door.type)) {
+            case doorTypes.SLIDING:
+              door.id = id;
+              door.area = door.width * door.height;
+              break;
+            case doorTypes.OVERHEAD:
+            case doorTypes.WALK_IN:
+              door.id = `${id}-${door.width}x${door.height}`;
+              break;
+            default:
+              throw new Error(`Unknown door type - ${parseInt(door.type)}`);
+          }
+          
+          return door;
       }),
       Labor: [
         {
           name: 'Man-Hours',
           cat: 'labor',
           id: 'hourly',
-          qty: volume * hoursPerCubicFoot,
+          qty: Math.ceil(volume * hoursPerCubicFoot),
         }
       ]
     };
@@ -582,6 +594,7 @@ class Quote extends Component {
             item.description = item.area ? 
               `${record.description}, ${item.width}' x ${item.height}'` :
               record.description;
+            item.description = `${item.description}, ${map.doorWall.options[item.wall]} wall`;
             break;
           case 'truss':
             item.unitPrice = item.size * record.price;
@@ -606,6 +619,53 @@ class Quote extends Component {
     }, {groups: {}, total: 0});
   }
 
+  validateDoors (doors) {
+    const length = this.state.length;
+    const width = this.state.width;
+    const height = this.state.height;
+
+    if (!(length && width && height)) {
+      doors.forEach(door => {
+        door.valid = false;
+        door.reason = 'Doors need buildings!'
+      });
+      return;
+    }
+
+    const doorsChecked = [];
+
+    doors.forEach(door => {
+      const reason = 'The door is too big!';
+      door.valid = true;
+
+      switch (parseInt(door.wall)) {
+        case doorWalls.FRONT:
+        case doorWalls.BACK:
+          if (door.width >= width || door.height >= height) {
+            door.valid = false;
+            door.reason = reason;
+          }
+          break;
+        case doorWalls.LEFT:
+        case doorWalls.RIGHT:
+          if (door.width >= length || door.height >= height) {
+            door.valid = false;
+            door.reason = reason;
+          }
+          break;
+      }
+
+      doorsChecked.forEach(checked => {
+        if (parseInt(checked.wall) === parseInt(door.wall)) {
+          door.valid = false;
+          door.reason = 'An existing door conflicts!';
+        }
+      });
+
+      doorsChecked.push(door);
+    });
+  }
+
   render () {
     const state = this.state;
     const map = this.props.stateMap;
@@ -620,6 +680,8 @@ class Quote extends Component {
     const pitch = state.pitch;
     const pitchValue = map.pitch.values[pitch];
 
+    const hasVolume = length && width && height;
+
     const doors = state.doors;
     const doorType = state.doorType;
     const doorWall = state.doorWall;
@@ -632,6 +694,13 @@ class Quote extends Component {
     if (editingDoor) {
       doorsRendered.push(this.createDoor(state));
     }
+
+    this.validateDoors(doorsRendered);
+    const doorList = editingDoor ? doorsRendered.slice(0, -1) : doorsRendered.slice();
+
+    const currentDoor = editingDoor ? doorsRendered[doorsRendered.length - 1] : {};
+    const valid = currentDoor.valid;
+    const reason = currentDoor.reason;
 
     const materials = this.calculateMaterials(doorsRendered);
     const quote = this.getQuote(materials);
@@ -668,12 +737,14 @@ class Quote extends Component {
               </fieldset>
               <DoorBuilder
                 map={doorMap}
-                doors={doors}
+                doors={doorList}
                 type={doorType}
                 wall={doorWall}
                 size={doorSize}
                 width={doorWidth}
                 height={doorHeight}
+                valid={valid}
+                reason={reason}
                 editing={editingDoor}
                 onAdd={this.handleAddDoor}
                 onRemove={this.handleRemoveDoor}
@@ -683,18 +754,30 @@ class Quote extends Component {
           }
         </div>
         <div className="col-md-8">
-          <div className="row">
-            <div className="col-12">
-              {rendering ?
-                <Rendering length={length} width={width} height={height} pitch={pitchValue} doors={doorsRendered}/> :
+          {rendering ?
+            <div className="row justify-content-center">
+              <div className="col-12 col-sm-auto">
+                <Rendering length={length} width={width} height={height} pitch={pitchValue} doors={doorsRendered}/>
+              </div>
+            </div>
+            :
+            <div className="row">
+              <div className="col-12">
                 <Details quote={quote}/>
+              </div>
+            </div>
+          }
+          <div className="row justify-content-center mt-3">
+            <div className="col-12 col-sm-auto">
+              <p className="h4 mr-3">Quote: <strong className="text-primary">${commas(total)}.00</strong></p>
+            </div>
+            <div className="col-12 col-sm-auto">
+              <button type="button" className="btn btn-secondary mr-3" onClick={this.handleViewToggle}>{viewMessage}</button>
+              {submitted || hasVolume ?
+                <button type="button" className="btn btn-outline-primary" onClick={this.handleSubmit}>Submit for review</button> :
+                <button type="button" className="btn btn-outline-primary" disabled onClick={this.handleSubmit}>Submit for review</button>
               }
             </div>
-          </div>
-          <div className="mt-3 text-center">
-            <span className="h4 mr-3">Quote: <strong className="text-primary">${commas(total)}.00</strong></span>
-            <button type="button" className="btn btn-secondary mr-3" onClick={this.handleViewToggle}>{viewMessage}</button>
-            {submitted || <button type="button" className="btn btn-outline-primary" onClick={this.handleSubmit}>Submit for review</button>}
           </div>
         </div>
       </div>
@@ -741,10 +824,13 @@ class DoorBuilder extends Component {
     const size = this.props.size;
     const sizes = map.type.values[type].sizes;
 
+    const valid = this.props.valid;
+    const reason = this.props.reason;
+
     const editing = this.props.editing;
     const addMessage = editing ? 'Add Door' : 'New Door';
 
-    const doors = this.props.doors.map((door, index) => {
+    const doors = this.props.doors.map(door => {
       const wall = map.wall.options[door.wall];
       const type = map.type.options[door.type];
       const sizes = map.type.values[door.type].sizes;
@@ -752,11 +838,22 @@ class DoorBuilder extends Component {
       let dimensions = `${door.width} x ${door.height}`;
 
       if (sizes) {
-        dimensions = sizes.options[size];
+        dimensions = sizes.options[door.size];
       }
+
       const text = `${wall} wall, ${type}, ${dimensions}`;
 
-      return <li className="list-group-item" key={index}>{text}</li>
+      const classes = door.valid ? 'list-group-item' : 'list-group-item list-group-item-danger';
+      const message = door.valid ? '' : door.reason;
+
+      return (
+        <li className={classes} key={door.key} title={message}>
+          <button type="button" id={door.key} className="btn btn-sm btn-outline-danger mr-3" onClick={this.handleRemove}>
+            {'\u2715'}
+          </button>
+          {text}
+        </li>
+      );
     });
 
     const doorList = doors.length ? <ul className="list-group mb-3">{doors}</ul> : null;
@@ -776,10 +873,18 @@ class DoorBuilder extends Component {
           </div>
         }
         <div className="form-group row">
-          <div className="col-12 text-right">
+          <div className="col-12 text-center">
             {editing && <button type="button" className="btn btn-secondary mr-2" onClick={this.handleCancel}>Cancel</button>}
-            <button type="button" className="btn btn-outline-primary" onClick={this.handleAdd}>{addMessage}</button>
+            {editing && !valid ?
+              <button type="button" className="btn btn-danger" disabled onClick={this.handleAdd}>{addMessage}</button> :
+              <button type="button" className="btn btn-outline-primary" onClick={this.handleAdd}>{addMessage}</button>
+            }
           </div>
+          {editing && !valid &&
+            <div className="col-12 alert alert-danger mt-3" role="alert">
+              {reason}
+            </div>
+          }
         </div>
       </fieldset>
     );
@@ -789,7 +894,6 @@ class DoorBuilder extends Component {
 class Details extends Component {
   render () {
     const groups = this.props.quote.groups;
-    console.log('groups', groups);
 
     const rows = [];
     
@@ -797,14 +901,14 @@ class Details extends Component {
       const group = groups[key];
 
       rows.push(
-        <tr>
+        <tr key={key}>
           <th scope="row" colSpan="5">{key}</th>
         </tr>
       );
 
-      group.forEach(item => {
+      group.forEach((item, index) => {
         rows.push(
-          <tr>
+          <tr key={`${key}-${item.id}-${index}`}>
             <td>{item.name}</td>
             <td>{item.description}</td>
             <td className="text-right">${commas(item.unitPrice.toFixed(1))}</td>

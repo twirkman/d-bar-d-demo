@@ -5,21 +5,54 @@ class Rendering extends Component {
   constructor (props) {
     super(props);
 
+    this.interval = 15;
     this.rotation = 0.0;
     this.rotationSpeed = 30;
     this.rotating = true;
+    this.aspectRatio = 640.0 / 480.0;
+    this.maxWidth = 640;
     this.mvMatrixStack = [];
 
     this.drawScene = this.drawScene.bind(this);
     this.handleClick = this.handleClick.bind(this);
+    this.resizeHandler = this.resizeHandler.bind(this);
+    this.resizeThrottler = this.resizeThrottler.bind(this);
   }
 
-  handleClick () {
+  resizeThrottler () {
+    const self = this;
+    let resizeTimeout;
+    if (!resizeTimeout) {
+      resizeTimeout = setTimeout(() => {
+        resizeTimeout = null;
+        self.resizeHandler();
+      }, self.interval);
+    }
+  }
+
+  resizeHandler() {
+    const canvas = this.gl.canvas;
+    const width = Math.min(canvas.parentElement.parentElement.clientWidth - 30, this.maxWidth);
+    const height = width / this.aspectRatio;
+    canvas.width = width;
+    canvas.height = height;
+    this.gl.viewport(0, 0, width, height);
+  }
+
+  handleClick (event) {
+    event.preventDefault();
     this.rotating = !this.rotating;
   }
 
   componentDidMount () {
     this.initCanvas();
+    window.addEventListener("resize", this.resizeThrottler, false);
+    this.resizeHandler();
+  }
+
+  componentWillUnmount () {
+    window.removeEventListener("resize", this.resizeThrottler, false);
+    clearInterval(this.timerID);
   }
 
   initCanvas () {
@@ -39,9 +72,9 @@ class Rendering extends Component {
     this.initStaticBuffers();
 
     // Establish the camera frustum: FOV, AR, near plane, far plane
-    this.perspectiveMatrix = makePerspective(45, 640.0/480.0, 0.1, 1000.0);
+    this.perspectiveMatrix = makePerspective(45, this.aspectRatio, 0.1, 1000.0);
 
-    setInterval(this.drawScene, 15);
+    this.timerID = setInterval(this.drawScene, this.interval);
   }
 
   drawScene () {
@@ -167,12 +200,21 @@ class Rendering extends Component {
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(verts), gl.STATIC_DRAW);
     gl.vertexAttribPointer(this.vertexPositionAttribute, 3, gl.FLOAT, false, 0, 0);
 
-    const vertColors = [
+    const validColors = [
       1.0, 1.0, 1.0, 1.0,
       1.0, 1.0, 1.0, 1.0,
       1.0, 1.0, 1.0, 1.0,
       1.0, 1.0, 1.0, 1.0,
     ];
+
+    const invalidColors = [
+      0.85, 0.325, 0.31, 1.0,
+      0.85, 0.325, 0.31, 1.0,
+      0.85, 0.325, 0.31, 1.0,
+      0.85, 0.325, 0.31, 1.0,
+    ];
+
+    const vertColors = door.valid ? validColors : invalidColors;
 
     const colorBuffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
