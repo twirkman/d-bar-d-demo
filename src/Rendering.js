@@ -6,7 +6,7 @@ class Rendering extends Component {
     super(props);
 
     this.rotation = 0.0;
-    this.rotationSpeed = 45;
+    this.rotationSpeed = 30;
     this.rotating = true;
     this.mvMatrixStack = [];
 
@@ -315,7 +315,7 @@ class Rendering extends Component {
 
   render() {
     return (
-      <canvas ref="canvas" width={720} height={480} onClick={this.handleClick}/>
+      <canvas ref="canvas" width={640} height={480} onClick={this.handleClick}/>
     );
   }
 }
